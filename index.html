@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Skeleton Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts for futuristic Sci-Fi UI -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Pose & Camera CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Share Tech Mono', monospace;
+            background-color: #000000;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        
+        /* Landscape Blocker Media Query */
+        #landscapeBlocker {
+            display: none;
+        }
+        @media screen and (orientation: landscape) {
+            #landscapeBlocker {
+                display: flex !important;
+            }
+        }
+
+        .neon-path {
+            fill: none;
+            stroke: #00f2fe;
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            filter: drop-shadow(0 0 8px #00f2fe);
+        }
+        .neon-head {
+            fill: none;
+            stroke: #00f2fe;
+            stroke-width: 4;
+            filter: drop-shadow(0 0 8px #00f2fe);
+        }
+        .neon-joint {
+            fill: #ffffff;
+        }
+    </style>
+</head>
+<body class="relative min-h-screen text-white select-none bg-black">
+
+    <!-- 0.5 Second Splash Entry Screen -->
+    <div id="splashScreen" class="absolute inset-0 z-[100] bg-black flex flex-col items-center justify-center transition-opacity duration-500 ease-in-out">
+        <svg width="150" height="150" viewBox="0 0 100 100" class="mb-6 animate-pulse">
+            <!-- Head -->
+            <circle cx="50" cy="20" r="12" class="neon-head" />
+            <!-- Shoulders -->
+            <line x1="30" y1="40" x2="70" y2="40" class="neon-path" />
+            <!-- Spine -->
+            <line x1="50" y1="40" x2="50" y2="80" class="neon-path" />
+            <!-- Left Arm -->
+            <polyline points="30,40 20,60 25,80" class="neon-path" />
+            <!-- Right Arm -->
+            <polyline points="70,40 80,60 75,80" class="neon-path" />
+            <!-- Joints -->
+            <circle cx="30" cy="40" r="2.5" class="neon-joint" />
+            <circle cx="70" cy="40" r="2.5" class="neon-joint" />
+            <circle cx="20" cy="60" r="2.5" class="neon-joint" />
+            <circle cx="80" cy="60" r="2.5" class="neon-joint" />
+        </svg>
+        <h1 class="text-3xl font-black tracking-widest orbitron text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600 drop-shadow-[0_0_10px_rgba(0,242,254,0.8)]">
+            NEON SKELETON
+        </h1>
+        <p class="text-xs tracking-widest text-cyan-500/60 mt-3 font-mono">INITIALIZING CORE...</p>
+    </div>
+
+    <!-- Portrait Orientation Blocker (Restricts Horizontal Movement) -->
+    <div id="landscapeBlocker" class="absolute inset-0 z-[999] bg-black/95 flex flex-col items-center justify-center p-8 text-center backdrop-blur-md">
+        <i class="fas fa-mobile-alt text-5xl text-cyan-400 mb-4 animate-bounce" style="transform: rotate(90deg);"></i>
+        <h2 class="text-xl font-bold orbitron text-white tracking-widest mb-2">VERTICAL MODE REQUIRED</h2>
+        <p class="text-xs text-gray-500 tracking-wider">PLEASE ROTATE YOUR DEVICE BACK TO PORTRAIT</p>
+    </div>
+
+    <!-- Core Interactive Canvas Layer -->
+    <canvas id="neonCanvas" class="absolute inset-0 w-full h-full z-10 block"></canvas>
+
+    <!-- Top Minimal HUD Header -->
+    <header class="absolute top-0 left-0 right-0 z-30 p-6 flex justify-between items-center pointer-events-none">
+        <div>
+            <h1 class="text-2xl font-black tracking-widest orbitron text-white">NEON SKELETON</h1>
+            <p id="systemStatus" class="text-[10px] text-gray-500 tracking-wider uppercase mt-0.5">STATUS: STANDBY</p>
+        </div>
+        <!-- Menu Button (Shows only when minimized) -->
+        <button id="openMenuBtn" class="pointer-events-auto bg-white/5 border border-white/10 hover:bg-white/10 text-white px-4 py-2 rounded transition-all text-xs font-bold tracking-widest hidden">
+            <i class="fas fa-bars"></i> MENU
+        </button>
+    </header>
+
+    <!-- Minimal Settings Control Panel -->
+    <div id="settingsPanel" class="absolute top-6 right-6 z-40 w-80 max-w-[calc(100vw-3rem)] bg-black/95 border border-white/10 rounded-lg p-5 backdrop-blur-md shadow-2xl transition-all duration-300">
+        <div class="flex justify-between items-center border-b border-white/10 pb-3 mb-4">
+            <h3 class="text-xs font-bold orbitron text-white tracking-widest"><i class="fas fa-cog"></i> SENSOR CONFIG</h3>
+            <button id="minimizeMenuBtn" class="text-xs text-gray-400 hover:text-white transition-all"><i class="fas fa-arrow-left"></i> BACK</button>
+        </div>
+        <button id="toggleCamBtn" class="w-full bg-white text-black font-bold py-2.5 rounded text-xs tracking-widest uppercase hover:bg-gray-200 transition-all active:scale-95 shadow-lg">
+            <i class="fas fa-video"></i> ACTIVATE WEBCAM
+        </button>
+    </div>
+
+    <script>
+        // --- 1. Splash Screen Timing Controller ---
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const splash = document.getElementById('splashScreen');
+                splash.style.opacity = '0';
+                setTimeout(() => splash.remove(), 500); // Clean exit from DOM
+            }, 500);
+        });
+
+        // --- 2. Canvas & Render Mechanics ---
+        const canvas = document.getElementById('neonCanvas');
+        const ctx = canvas.getContext('2d');
+        const webcam = document.createElement('video');
+        let cameraActive = false, currentPose = null;
+        let selectedColor = '#00f2fe'; // Default Neon Theme
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function lerp(start, end, amt) { 
+            return (1 - amt) * start + amt * end; 
+        }
+
+        // --- 3. Clean Skeletal Rendering Engine ---
+        function drawSegment(p1, p2, width, color) {
+            if (!p1 || !p2 || p1.visibility < 0.5 || p2.visibility < 0.5) return;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+        }
+
+        function drawHead(nose, leftEye, rightEye, width, color) {
+            if (!nose || nose.visibility < 0.5) return;
+            
+            let headRadius = 40;
+            if (leftEye && rightEye && leftEye.visibility > 0.5 && rightEye.visibility > 0.5) {
+                const dist = Math.hypot(leftEye.x - rightEye.x, leftEye.y - rightEye.y);
+                headRadius = Math.max(25, dist * 2.2);
+            }
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.arc(nose.x, nose.y - (headRadius * 0.4), headRadius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function renderNeonSkeleton() {
+            // High-contrast clean black viewport background
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (!currentPose) return;
+
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = selectedColor;
+
+            const pts = currentPose;
+
+            // Head Silhouette
+            drawHead(pts[0], pts[2], pts[5], 4.0, selectedColor);
+
+            // Shoulders & Spine
+            drawSegment(pts[11], pts[12], 4.5, selectedColor);
+            drawSegment(pts[11], pts[23], 4.0, selectedColor);
+            drawSegment(pts[12], pts[24], 4.0, selectedColor);
+            drawSegment(pts[23], pts[24], 4.5, selectedColor);
+
+            // Left Arm
+            drawSegment(pts[11], pts[13], 4.0, selectedColor);
+            drawSegment(pts[13], pts[15], 4.0, selectedColor);
+
+            // Right Arm
+            drawSegment(pts[12], pts[14], 4.0, selectedColor);
+            drawSegment(pts[14], pts[16], 4.0, selectedColor);
+
+            // Left Leg & Foot
+            drawSegment(pts[23], pts[25], 4.0, selectedColor);
+            drawSegment(pts[25], pts[27], 4.0, selectedColor);
+            drawSegment(pts[27], pts[31], 3.5, selectedColor);
+
+            // Right Leg & Foot
+            drawSegment(pts[24], pts[26], 4.0, selectedColor);
+            drawSegment(pts[26], pts[28], 4.0, selectedColor);
+            drawSegment(pts[28], pts[32], 3.5, selectedColor);
+
+            // Glowing Joint Nodes
+            const criticalJoints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+            criticalJoints.forEach((idx) => {
+                const joint = pts[idx];
+                if (joint && joint.visibility > 0.5) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = selectedColor;
+                    ctx.lineWidth = 2.0;
+                    ctx.beginPath();
+                    ctx.arc(joint.x, joint.y, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            });
+
+            ctx.restore();
+        }
+
+        // Frame rendering thread
+        function runFrame() {
+            requestAnimationFrame(runFrame);
+            renderNeonSkeleton();
+        }
+        runFrame();
+
+        // --- 4. Biometric Sensor Core (MediaPipe setup) ---
+        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+        pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.55, minTrackingConfidence: 0.55 });
+        
+        pose.onResults(results => {
+            if (!results.poseLandmarks) {
+                currentPose = null;
+                document.getElementById('systemStatus').innerText = "STATUS: SCANNING";
+                return;
+            }
+            
+            // Fixed mirror orientation mapping for FRONT camera
+            const newFrame = results.poseLandmarks.map(p => ({ 
+                x: (1 - p.x) * canvas.width, 
+                y: p.y * canvas.height, 
+                visibility: p.visibility 
+            }));
+            
+            if (!currentPose) {
+                currentPose = newFrame;
+            } else {
+                currentPose.forEach((p, i) => { 
+                    p.x = lerp(p.x, newFrame[i].x, 0.65); 
+                    p.y = lerp(p.y, newFrame[i].y, 0.65); 
+                    p.visibility = newFrame[i].visibility; 
+                });
+            }
+            document.getElementById('systemStatus').innerText = "STATUS: TRACKING";
+        });
+
+        // --- 5. Media Devices Control System ---
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 60 }
+                    } 
+                });
+                webcam.srcObject = stream;
+                webcam.play();
+                
+                const cam = new Camera(webcam, { 
+                    onFrame: async () => { if(cameraActive) await pose.send({image: webcam}); }, 
+                    width: 640, 
+                    height: 480 
+                });
+                
+                cam.start();
+                cameraActive = true;
+                
+                const btn = document.getElementById('toggleCamBtn');
+                btn.innerHTML = '<i class="fas fa-power-off"></i> STOP SENSOR';
+                btn.classList.remove('bg-white', 'text-black', 'hover:bg-gray-200');
+                btn.classList.add('bg-red-900', 'text-white', 'hover:bg-red-800');
+            } catch (err) {
+                console.error("Camera failed: ", err);
+                document.getElementById('errorNotification').classList.remove('hidden');
+            }
+        }
+
+        // Menu Interface Toggle Functions
+        document.getElementById('toggleCamBtn').onclick = () => cameraActive ? location.reload() : startCamera();
+        document.getElementById('openMenuBtn').onclick = () => { 
+            document.getElementById('settingsPanel').classList.remove('hidden'); 
+            document.getElementById('openMenuBtn').classList.add('hidden'); 
+        };
+        document.getElementById('minimizeMenuBtn').onclick = () => { 
+            document.getElementById('settingsPanel').classList.add('hidden'); 
+            document.getElementById('openMenuBtn').classList.remove('hidden'); 
+        };
+    </script>
+</body>
+</html>
